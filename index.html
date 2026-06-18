@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>우리 위치공유</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #fff7fb 0%, #f3f7ff 100%);
+      color: #222;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 28px;
+      padding: 30px 24px;
+      box-shadow: 0 20px 50px rgba(60, 80, 120, 0.16);
+      text-align: center;
+    }
+
+    .heart {
+      font-size: 42px;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: -0.8px;
+    }
+
+    .subtitle {
+      margin: 12px 0 28px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #666;
+    }
+
+    button {
+      width: 100%;
+      border: none;
+      border-radius: 18px;
+      padding: 18px 20px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #ff6b9d;
+      color: white;
+      box-shadow: 0 12px 24px rgba(255, 107, 157, 0.32);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .secondary {
+      margin-top: 12px;
+      background: #eef3ff;
+      color: #345;
+      box-shadow: none;
+      font-size: 15px;
+      display: none;
+    }
+
+    .status {
+      margin-top: 20px;
+      padding: 14px;
+      border-radius: 16px;
+      background: #f7f8fb;
+      color: #555;
+      font-size: 14px;
+      line-height: 1.5;
+      word-break: break-all;
+      min-height: 48px;
+    }
+
+    .small {
+      margin-top: 18px;
+      font-size: 12px;
+      color: #999;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <div class="heart">💗</div>
+    <h1>우리 위치공유</h1>
+
+    <p class="subtitle">
+      버튼을 누르면 현재 위치를 확인해서<br />
+      카카오톡이나 문자로 보낼 수 있어요.
+    </p>
+
+    <button id="shareBtn">내 위치 보내기</button>
+    <button id="copyBtn" class="secondary">위치 링크 복사하기</button>
+
+    <div id="status" class="status">
+      아직 위치를 공유하지 않았어요.
+    </div>
+
+    <div class="small">
+      위치는 버튼을 누를 때만 확인됩니다.
+    </div>
+  </main>
+
+  <script>
+    const shareBtn = document.getElementById("shareBtn");
+    const copyBtn = document.getElementById("copyBtn");
+    const statusBox = document.getElementById("status");
+
+    let lastLocationUrl = "";
+
+    function setStatus(message) {
+      statusBox.textContent = message;
+    }
+
+    function makeMapUrl(latitude, longitude) {
+      return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+    }
+
+    async function shareLocation(url) {
+      const message = `내 현재 위치야 💗\n${url}`;
+
+      if (navigator.share) {
+        await navigator.share({
+          title: "우리 위치공유",
+          text: "내 현재 위치야 💗",
+          url: url
+        });
+        setStatus("공유창을 열었어요. 카카오톡이나 문자로 보내면 돼요.");
+      } else {
+        await navigator.clipboard.writeText(message);
+        setStatus("이 브라우저에서는 공유창을 열 수 없어서 위치 링크를 복사했어요.");
+        copyBtn.style.display = "block";
+      }
+    }
+
+    shareBtn.addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        setStatus("이 기기에서는 위치 기능을 사용할 수 없어요.");
+        return;
+      }
+
+      setStatus("현재 위치를 확인하는 중이에요...");
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const latitude = position.coords.latitude;
+          const longitude = position.coords.longitude;
+
+          lastLocationUrl = makeMapUrl(latitude, longitude);
+
+          try {
+            await shareLocation(lastLocationUrl);
+          } catch (error) {
+            setStatus("공유가 취소되었거나 실패했어요. 다시 눌러주세요.");
+            copyBtn.style.display = "block";
+          }
+        },
+        (error) => {
+          if (error.code === 1) {
+            setStatus("위치 권한이 거부되었어요. 브라우저 설정에서 위치 권한을 허용해주세요.");
+          } else if (error.code === 2) {
+            setStatus("현재 위치를 확인할 수 없어요. 잠시 후 다시 시도해주세요.");
+          } else {
+            setStatus("위치 확인 시간이 오래 걸리고 있어요. 다시 시도해주세요.");
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
+        }
+      );
+    });
+
+    copyBtn.addEventListener("click", async () => {
+      if (!lastLocationUrl) {
+        setStatus("먼저 위치를 확인해주세요.");
+        return;
+      }
+
+      await navigator.clipboard.writeText(`내 현재 위치야 💗\n${lastLocationUrl}`);
+      setStatus("위치 링크를 복사했어요.");
+    });
+  </script>
+</body>
+</html>
