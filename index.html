@@ -67,6 +67,11 @@
       transform: translateY(1px);
     }
 
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
     .secondary {
       margin-top: 12px;
       background: #eef3ff;
@@ -103,15 +108,15 @@
     <h1>우리 위치공유</h1>
 
     <p class="subtitle">
-      버튼을 누르면 현재 위치를 확인해서<br />
+      먼저 현재 위치를 확인한 뒤,<br />
       카카오톡이나 문자로 보낼 수 있어요.
     </p>
 
-    <button id="shareBtn">내 위치 보내기</button>
+    <button id="mainBtn">내 위치 확인하기</button>
     <button id="copyBtn" class="secondary">위치 링크 복사하기</button>
 
     <div id="status" class="status">
-      아직 위치를 공유하지 않았어요.
+      아직 위치를 확인하지 않았어요.
     </div>
 
     <div class="small">
@@ -120,11 +125,12 @@
   </main>
 
   <script>
-    const shareBtn = document.getElementById("shareBtn");
+    const mainBtn = document.getElementById("mainBtn");
     const copyBtn = document.getElementById("copyBtn");
     const statusBox = document.getElementById("status");
 
     let lastLocationUrl = "";
+    let mode = "locate";
 
     function setStatus(message) {
       statusBox.textContent = message;
@@ -134,46 +140,50 @@
       return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
     }
 
-    async function shareLocation(url) {
-      const message = `내 현재 위치야 💗\n${url}`;
-
-      if (navigator.share) {
-        await navigator.share({
-          title: "우리 위치공유",
-          text: "내 현재 위치야 💗",
-          url: url
-        });
-        setStatus("공유창을 열었어요. 카카오톡이나 문자로 보내면 돼요.");
-      } else {
-        await navigator.clipboard.writeText(message);
-        setStatus("이 브라우저에서는 공유창을 열 수 없어서 위치 링크를 복사했어요.");
-        copyBtn.style.display = "block";
-      }
+    function makeMessage(url) {
+      return `내 현재 위치야 💗\n${url}`;
     }
 
-    shareBtn.addEventListener("click", () => {
+    function resetToLocateMode() {
+      mode = "locate";
+      mainBtn.disabled = false;
+      mainBtn.textContent = "내 위치 확인하기";
+      copyBtn.style.display = "none";
+    }
+
+    function setShareMode() {
+      mode = "share";
+      mainBtn.disabled = false;
+      mainBtn.textContent = "카카오톡/문자로 공유하기";
+      copyBtn.style.display = "block";
+    }
+
+    function getCurrentLocation() {
       if (!navigator.geolocation) {
         setStatus("이 기기에서는 위치 기능을 사용할 수 없어요.");
         return;
       }
 
+      mainBtn.disabled = true;
+      mainBtn.textContent = "위치 확인 중...";
       setStatus("현재 위치를 확인하는 중이에요...");
 
       navigator.geolocation.getCurrentPosition(
-        async (position) => {
+        (position) => {
           const latitude = position.coords.latitude;
           const longitude = position.coords.longitude;
 
           lastLocationUrl = makeMapUrl(latitude, longitude);
 
-          try {
-            await shareLocation(lastLocationUrl);
-          } catch (error) {
-            setStatus("공유가 취소되었거나 실패했어요. 다시 눌러주세요.");
-            copyBtn.style.display = "block";
-          }
+          setStatus(
+            "위치 확인 완료!\n이제 아래 버튼을 한 번 더 누르면 공유창이 열려요."
+          );
+
+          setShareMode();
         },
         (error) => {
+          resetToLocateMode();
+
           if (error.code === 1) {
             setStatus("위치 권한이 거부되었어요. 브라우저 설정에서 위치 권한을 허용해주세요.");
           } else if (error.code === 2) {
@@ -188,17 +198,65 @@
           maximumAge: 0
         }
       );
-    });
+    }
 
-    copyBtn.addEventListener("click", async () => {
+    async function sharePreparedLocation() {
+      if (!lastLocationUrl) {
+        setStatus("먼저 위치를 확인해주세요.");
+        resetToLocateMode();
+        return;
+      }
+
+      const message = makeMessage(lastLocationUrl);
+
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: "우리 위치공유",
+            text: message
+          });
+
+          setStatus("공유창을 열었어요. 카카오톡이나 문자로 보내면 돼요.");
+        } else {
+          await copyLocation();
+          setStatus("이 브라우저에서는 공유창을 열 수 없어서 위치 링크를 복사했어요.");
+        }
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          setStatus("공유를 취소했어요. 다시 공유하려면 버튼을 눌러주세요.");
+        } else {
+          setStatus("공유창을 열지 못했어요. 대신 위치 링크를 복사해서 보내주세요.");
+        }
+
+        copyBtn.style.display = "block";
+      }
+    }
+
+    async function copyLocation() {
       if (!lastLocationUrl) {
         setStatus("먼저 위치를 확인해주세요.");
         return;
       }
 
-      await navigator.clipboard.writeText(`내 현재 위치야 💗\n${lastLocationUrl}`);
-      setStatus("위치 링크를 복사했어요.");
+      const message = makeMessage(lastLocationUrl);
+
+      try {
+        await navigator.clipboard.writeText(message);
+        setStatus("위치 링크를 복사했어요. 카카오톡이나 문자에 붙여넣으면 돼요.");
+      } catch (error) {
+        setStatus("복사에 실패했어요. 아래 링크를 직접 길게 눌러 복사해주세요.\n" + lastLocationUrl);
+      }
+    }
+
+    mainBtn.addEventListener("click", async () => {
+      if (mode === "locate") {
+        getCurrentLocation();
+      } else {
+        await sharePreparedLocation();
+      }
     });
+
+    copyBtn.addEventListener("click", copyLocation);
   </script>
 </body>
 </html>
